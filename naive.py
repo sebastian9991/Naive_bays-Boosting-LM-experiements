@@ -8,7 +8,6 @@ from sklearn.feature_extraction.text import CountVectorizer
 class NaiveBayes:
     def __init__(self, bayesian=False) -> None:
         self.bayesian = bayesian
-        pass
 
     def fit(self, X, y):
         self.calculate_priors(y)
@@ -17,44 +16,46 @@ class NaiveBayes:
     def predict(self, X):
         """Assumes X is 1xD vector"""
         prob_joint_c_x = self.calculate_joint(X)
+        self.prob_joint_c_x = prob_joint_c_x
 
-        sum = 0
+
+        #arg-max to find final classification
+        y_pred = []
         for key, value in prob_joint_c_x.items():
-            sum += value
+            y_pred.append(np.argmax(value))
+
+        return y_pred
 
 
-        ##Normalize
-        prob_x_given_c = {}
-        for key, value in prob_joint_c_x.items():
-            prob_x_given_c[key] = prob_joint_c_x[key] / sum
 
-        for key, value in prob_x_given_c.items():
-            print(f"Key:{key}")
-            print(f"probability: {value}")
-        return prob_x_given_c
+
 
     def evaluate_acc(self, y_true, y_pred):
         pass
 
     def calculate_joint(self, X):
         assert isinstance(X, csr_matrix)
-        row = X.getrow(0)
+        N = X.shape[0]
         prob_joint_c_x = {}
-        for c in self.prior_probs:
-            product = 1
-            for idx, d in enumerate(range(0, row.shape[1])):
-                value = row[(0, d)]
-                print(f"value: {value}")
+        for n in range(0, N):
+            row = X.getrow(n)
+            joint_probs = []
+            iterator = dict(sorted(self.prior_probs.items(), key=lambda item: item[0]))
+            for c, prob in iterator.items():
+                print(f"Calculating joint under predict: {c}")
+                product = 1
+                for idx, d in enumerate(range(0, row.shape[1])):
+                    value = row[(0, d)]
 
-                if value == 1:
-                    print(f"Accessed for 1: {self.prob_xd_given_class[c][(0, idx)]}")
-                    product = product * self.prob_xd_given_class[c][(0, idx)]
-                else:
-                    print(f"Accessed for 0: {1 - self.prob_xd_given_class[c][(0, idx)]}")
-                    product = product * (1 - self.prob_xd_given_class[c][(0, idx)])
-            prob_joint_c_x[c] = self.prior_probs[c]*product
+                    if value == 1:
+                        product = product * self.prob_xd_given_class[c][(0, idx)]
+                    else:
+                        product = product * (1 - self.prob_xd_given_class[c][(0, idx)])
+
+                joint_probs.append(self.prior_probs[c] * product)
+
+            prob_joint_c_x[n] = joint_probs
         return prob_joint_c_x
-
 
     def calculate_priors(self, y):
         ##learn prior
@@ -76,6 +77,7 @@ class NaiveBayes:
         # Assume for X feature = 1
         prob_xd_given_class = {}
         for x_row, c in zip(X, y):
+            print(f"Calculating class prob: {c}")
             if f"{c}" in prob_xd_given_class:
                 prob_xd_given_class[f"{c}"] = np.add(prob_xd_given_class[f"{c}"], x_row)
             else:
@@ -84,10 +86,6 @@ class NaiveBayes:
         # normalize
         for key, value in prob_xd_given_class.items():
             prob_xd_given_class[key] = value / self.prior_counts[key]
-
-        for key, value in prob_xd_given_class.items():
-            print(f"Key:{key}")
-            print(f"Value matrix: {value}")
 
         self.prob_xd_given_class = prob_xd_given_class
 
@@ -123,18 +121,30 @@ def vectorize_get_X_y(dataframe):
     preprocess text into vectorized format.
     """
     vec = CountVectorizer()
-    tfidf_matrix = vec.fit_transform(dataframe["text"])
+    count_matrix = vec.fit_transform(dataframe["text"])
     # Get vector input X, and OHE label y
     y = dataframe.drop(columns=["text"])
     ohe_columns = y.columns
     y["class_labels"] = np.argmax(y[ohe_columns].values, axis=1)
     y = y.drop(columns=ohe_columns)
-    return tfidf_matrix, y 
+    y = y.to_numpy()
+    return count_matrix, y
 
 
 def main():
-    df = get_data()
-    X, y = vectorize_get_X_y(df)
+    # X = csr_matrix([[1, 0, 1], [0, 1, 1], [1, 0, 0]])
+    # y = ['class1', 'class2', 'class1']
+    # y = np.asarray(y)
+    nb = NaiveBayes()
+    # nb.calculate_priors(y)
+    # nb.calculate_feature_conditional(X, y)
+
+
+    X = csr_matrix([[1, 0, 1], [0, 1, 1], [1, 0, 0]])
+    y = [0, 1, 0]
+    y = np.asarray(y)
+    nb.fit(X, y)
+    nb.predict(X)
 
     return 0
 

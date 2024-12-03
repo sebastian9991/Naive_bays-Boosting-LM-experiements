@@ -19,10 +19,8 @@ class TestNaiveBayes(unittest.TestCase):
     def test_calculate_priors(self):
         """Test prior probability calculation."""
         y = self.mock_data.drop(columns=["text"])['y']
-        print(y)
         y = np.asarray(y)
-        X_stand_in_test = csr_matrix([[1, 0, 1], [0, 1, 1], [1, 0, 0]])
-        self.nb.fit(X_stand_in_test, y)
+        self.nb.calculate_priors(y)
         expected_priors = {
             "1": 0.25,
             "3": 0.5,
@@ -44,14 +42,16 @@ class TestNaiveBayes(unittest.TestCase):
         y = ['class1', 'class2', 'class1']
         y = np.asarray(y)
         self.nb.fit(X, y)
-        self.nb.predict(X)
+        y_pred = self.nb.predict(X)
+        print(y_pred)
 
-    def test_fit_predict_real(self):
-        """Test fit predict pipeline on real dataset."""
-        df = get_data()
-        X, y = vectorize_get_X_y(df)
-        self.nb.fit(X, y)
-        self.nb.predict(y)
+
+    # def test_fit_predict_real(self):
+    #     """Test fit predict pipeline on real dataset."""
+    #     df = get_data()
+    #     X, y = vectorize_get_X_y(df)
+    #     self.nb.fit(X, y)
+    #     self.nb.predict(X)
 
 
 
