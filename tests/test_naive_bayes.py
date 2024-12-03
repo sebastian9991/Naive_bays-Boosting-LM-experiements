@@ -21,7 +21,8 @@ class TestNaiveBayes(unittest.TestCase):
         y = self.mock_data.drop(columns=["text"])['y']
         print(y)
         y = np.asarray(y)
-        self.nb.fit(None, y)
+        X_stand_in_test = csr_matrix([[1, 0, 1], [0, 1, 1], [1, 0, 0]])
+        self.nb.fit(X_stand_in_test, y)
         expected_priors = {
             "1": 0.25,
             "3": 0.5,
@@ -37,26 +38,22 @@ class TestNaiveBayes(unittest.TestCase):
         self.nb.calculate_priors(y)
         self.nb.calculate_feature_conditional(X, y)
 
+    def test_predict(self):
+        """Test predict calculation."""
+        X = csr_matrix([[1, 0, 1], [0, 1, 1], [1, 0, 0]])
+        y = ['class1', 'class2', 'class1']
+        y = np.asarray(y)
+        self.nb.fit(X, y)
+        self.nb.predict(X)
+
+    def test_fit_predict_real(self):
+        """Test fit predict pipeline on real dataset."""
+        df = get_data()
+        X, y = vectorize_get_X_y(df)
+        self.nb.fit(X, y)
+        self.nb.predict(y)
 
 
-
-    # def test_vectorize_get_X_y(self):
-    #     """Test the vectorization and splitting."""
-    #     X, y = vectorize_get_X_y(self.mock_data)
-    #     self.assertIsInstance(X, csr_matrix)
-    #     self.assertEqual(X.shape[0], len(self.mock_data))
-    #     self.assertEqual(y.shape[0], len(self.mock_data))
-    #     self.assertIn("happy", y.columns)
-
-    # def test_fit_and_predict(self):
-    #     """Test the fit and predict methods."""
-    #     # Mock data
-    #     X, y = vectorize_get_X_y(self.mock_data)
-    #     y = y.idxmax(axis=1)  # Simplify to single-label for testing
-    #     self.nb.fit(X, y)
-    #     predictions = self.nb.predict(X)
-    #     self.assertEqual(len(predictions), len(y))
-    #     self.assertTrue(all(pred in y.unique() for pred in predictions))
 
 
     def test_get_data(self):
