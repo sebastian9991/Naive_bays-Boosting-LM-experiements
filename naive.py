@@ -72,7 +72,6 @@ class NaiveBayes:
         prob_joint_c_x = {}
 
         for n in range(N):
-            print(f"On row: {n}")
             row = X_dense[n, :]
             joint_probs = []
 
@@ -110,7 +109,6 @@ class NaiveBayes:
         # Assume for X feature = 1
         prob_xd_given_class = {}
         for x_row, c in zip(X, y):
-            print(f"Calculating class prob: {c}")
             if c in prob_xd_given_class:
                 prob_xd_given_class[c] = np.add(prob_xd_given_class[c], x_row)
             else:
@@ -176,24 +174,6 @@ def main():
     acc = nb.evaluate_acc_confusion(y_train, y_train_predict)
     table = [[loss, acc]]
     print(tabulate(table, headers=["Cross-Entropy Loss", "Accuracy"], tablefmt="pretty"))
-    # X = csr_matrix(
-    #     [
-    #         [1, 1, 1, 0, 0, 1, 0],
-    #         [1, 1, 0, 0, 0, 1, 0],
-    #         [1, 1, 0, 1, 0, 1, 0],
-    #         [0, 1, 0, 0, 1, 1, 1],
-    #         [1, 1, 0, 0, 0, 1, 0],
-    #     ]
-    # )
-    # y = [1, 1, 1, 1, 0]
-    # y = np.asarray(y)
-    # nb.fit(X, y)
-    # x = csr_matrix([1, 1, 0, 0, 0, 1, 0])
-    # y_pred, y_pred_range = nb.predict(x)
-    # loss = nb.evaluate_acc([0], y_pred_range)
-    # acc = nb.evaluate_acc_confusion(y, y_pred)
-    # print(f"Loss: {loss}")
-    # print(f"acc: {acc}")
     return 0
 
 
