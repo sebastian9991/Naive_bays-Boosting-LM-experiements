@@ -31,7 +31,7 @@ class TestNaiveBayes(unittest.TestCase):
     def test_calculate_probabilites(self):
         """Test probability calculation."""
         X = csr_matrix([[1, 0, 1], [0, 1, 1], [1, 0, 0]])
-        y = ['class1', 'class2', 'class1']
+        y = [0, 1, 0]
         y = np.asarray(y)
         self.nb.calculate_priors(y)
         self.nb.calculate_feature_conditional(X, y)
@@ -39,11 +39,20 @@ class TestNaiveBayes(unittest.TestCase):
     def test_predict(self):
         """Test predict calculation."""
         X = csr_matrix([[1, 0, 1], [0, 1, 1], [1, 0, 0]])
-        y = ['class1', 'class2', 'class1']
+        y = [0, 1, 0]
         y = np.asarray(y)
         self.nb.fit(X, y)
         y_pred = self.nb.predict(X)
         print(y_pred)
+
+    def test_evaluate(self):
+        X = csr_matrix([[1, 0, 1], [0, 1, 1], [1, 0, 0]])
+        y = [0, 1, 0]
+        y = np.asarray(y)
+        self.nb.fit(X, y)
+        y_pred, y_pred_range = self.nb.predict(X)
+        print(self.nb.evaluate_acc(y, y_pred_range))
+        print(self.nb.evaluate_acc_confusion(y, y_pred))
 
 
     # def test_fit_predict_real(self):
@@ -58,9 +67,11 @@ class TestNaiveBayes(unittest.TestCase):
 
     def test_get_data(self):
         """Test data loading."""
-        df = get_data()
-        self.assertIsInstance(df, pd.DataFrame)
-        self.assertIn("text", df.columns)
+        train, val, test = get_data()
+        self.assertIsInstance(train, pd.DataFrame)
+        self.assertIsInstance(val, pd.DataFrame)
+        self.assertIsInstance(test, pd.DataFrame)
+        self.assertIn("text", train.columns)
 
 
 
