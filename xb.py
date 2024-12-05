@@ -1,39 +1,35 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import xgboost as xgb
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import (ConfusionMatrixDisplay, accuracy_score, auc,
-                             confusion_matrix, classification_report)
+                             classification_report, confusion_matrix)
 from sklearn.model_selection import train_test_split
 from tabulate import tabulate
-import seaborn as sns
 
 
 def get_data():
-    """
-    Gets the data from google-research-datasets, drops uneeded columns, and removes OHE with more than one occurence of 1.
-    """
-    df = pd.read_parquet(
-        "hf://datasets/google-research-datasets/go_emotions/raw/train-00000-of-00001.parquet"
-    )
-    df = df.drop(
-        columns=[
-            "id",
-            "author",
-            "subreddit",
-            "link_id",
-            "parent_id",
-            "created_utc",
-            "rater_id",
-            "example_very_unclear",
-        ]
-    )
-    emotion_columns = df.columns[1:]
-    df = df[df[emotion_columns].sum(axis=1) <= 1]
-    ohe_columns = df.drop(columns=["text"]).columns
-    df["noEmotion"] = (df[ohe_columns].sum(axis=1) == 0).astype(int) #No classification cases
-    return df
+    splits = {
+        "train": "simplified/train-00000-of-00001.parquet",
+        "validation": "simplified/validation-00000-of-00001.parquet",
+        "test": "simplified/test-00000-of-00001.parquet",
+    }
+    train = pd.read_parquet(
+        "hf://datasets/google-research-datasets/go_emotions/" + splits["train"]
+    ).drop(columns="id")
+    val = pd.read_parquet(
+        "hf://datasets/google-research-datasets/go_emotions/" + splits["validation"]
+    ).drop(columns="id")
+    test = pd.read_parquet(
+        "hf://datasets/google-research-datasets/go_emotions/" + splits["test"]
+    ).drop(columns=["id"])
+
+    train = remove_multi_labels(train)
+    val = remove_multi_labels(val)
+    test = remove_multi_labels(test)
+    return train, val, test
 
 
 def vectorize_get_X_y(dataframe):
@@ -42,55 +38,84 @@ def vectorize_get_X_y(dataframe):
     preprocess text into vectorized format.
     """
     vec = TfidfVectorizer()
-    tfidf_matrix = vec.fit_transform(dataframe["text"])
+    count_matrix = vec.fit_transform(dataframe["text"])
     # Get vector input X, and OHE label y
-    return tfidf_matrix, dataframe.drop(columns=["text"])
+    y = dataframe.drop(columns=["text"])
+    y = [e[1].iloc[0][0] for e in y.iterrows()]
+    return count_matrix, np.asarray(y)
 
 
-def main():
-    """With guidance from: https://www.kaggle.com/code/stuarthallows/using-xgboost-with-scikit-learn"""
-    df = get_data()
-    X, y = vectorize_get_X_y(df)
-    ohe_columns = y.columns
-    y["class_labels"] = np.argmax(y[ohe_columns].values, axis=1)
-    y = y.drop(columns=ohe_columns)
+def remove_multi_labels(dataframe):
+    """Texts with more than one label are dropped for simplicity."""
+    dataframe = dataframe[dataframe["labels"].apply(lambda x: len(x) == 1)]
+    return dataframe
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
 
-    ##XGBoost
-
-    xgb_model = xgb.XGBClassifier(objective="multi:softprob")
-    xgb_model.fit(X_train, y_train)
-    y_pred = xgb_model.predict(X_train)
-
+def display_evaluation(y_true, y_pred, filename: str):
+    """Display and calculate evalution metrics."""
+    # Create a ohe_columns by scratch due to removing the columns in the read data method
+    # Assume order is correct given in paper
+    ohe_columns = [
+        "admiration",
+        "amusement",
+        "anger",
+        "annoyance",
+        "approval",
+        "caring",
+        "confusion",
+        "curiosity",
+        "desire",
+        "disappointment",
+        "disapproval",
+        "disgust",
+        "embarrassment",
+        "excitement",
+        "fear",
+        "gratitude",
+        "grief",
+        "joy",
+        "love",
+        "nervousness",
+        "optimism",
+        "pride",
+        "realization",
+        "relief",
+        "remorse",
+        "sadness",
+        "surprise",
+        "neutral",
+    ]
     # Compute confusion matrix
-    conf_matrix = confusion_matrix(y_train, y_pred)
+    conf_matrix = confusion_matrix(y_true, y_pred)
 
     # Create a DataFrame for the confusion matrix for better readability
     conf_matrix_df = pd.DataFrame(
-        conf_matrix, 
+        conf_matrix,
         index=[f"True {cat}" for cat in ohe_columns],
-        columns=[f"Pred {cat}" for cat in ohe_columns]
+        columns=[f"Pred {cat}" for cat in ohe_columns],
     )
 
     # Plot confusion matrix as a heatmap
     plt.figure(figsize=(15, 15))
-    sns.heatmap(conf_matrix_df, annot=True, fmt='d', cmap='Blues')
-    plt.title("Confusion Matrix")
+    sns.heatmap(conf_matrix_df, annot=True, fmt="d", cmap="Blues")
+    plt.title(f"Confusion Matrix: {filename}")
     plt.ylabel("Actual")
     plt.xlabel("Predicted")
     plt.show()
 
+    plt.savefig(
+        f"./figs/CM_xgb_{filename}.png",
+        bbox_inches="tight",
+        dpi=300,
+    )
 
+    accuracy = accuracy_score(y_true, y_pred)
+    table_acc = [[accuracy]]
+    print(tabulate(table_acc, headers=["Accuracy"], tablefmt="pretty"))
 
-    accuracy = accuracy_score(y_train, y_pred)
-    table = [[accuracy]]
-    print(tabulate(table, headers = ["Accuracy"], tablefmt = "pretty"))
-
-
-    report = classification_report(y_train, y_pred, target_names = ohe_columns, output_dict = True)
+    report = classification_report(
+        y_true, y_pred, target_names=ohe_columns, output_dict=True
+    )
     class_metrics = []
     for cat in ohe_columns:
         cat_name = f"{cat}"
@@ -100,8 +125,55 @@ def main():
         class_metrics.append([cat_name, precision, recall, f1_score])
 
     headers = ["class", "precision", "Recall", "F1-score"]
-    table_class = tabulate(class_metrics, headers=headers, tablefmt= "grid", floatfmt = ".2f")
+    table_class = tabulate(
+        class_metrics, headers=headers, tablefmt="grid", floatfmt=".2f"
+    )
     print(table_class)
 
+    # Create plot for the table
+    fig, ax = plt.subplots(figsize=(10, 8))  # Adjust size as needed
+    ax.axis("tight")
+    ax.axis("off")
+
+    # Generate table using matlplotlib
+    table = ax.table(
+        cellText=class_metrics,
+        colLabels=headers,
+        cellLoc="center",
+        loc="center",
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.auto_set_column_width(col=list(range(len(headers))))
+    fig.subplots_adjust(top=0.82)
+    fig.subplots_adjust(right=0.696)
+
+    # Save or display the figure
+    plt.title(f"Classification Report (XGB): {filename}", fontsize=14, weight="bold")
+    plt.savefig(
+        f"./figs/classification_report_table_xgb{filename}.png",
+        bbox_inches="tight",
+        dpi=300,
+    )
+    plt.show()
 
 
+def main():
+    """With guidance from: https://www.kaggle.com/code/stuarthallows/using-xgboost-with-scikit-learn"""
+    train, val, test = get_data()
+    # Train
+    x, y = vectorize_get_X_y(train)
+    x_train, x_test, y_train, y_test = train_test_split(
+        x, y, test_size=0.20, random_state=42
+    )
+
+    xgb_model = xgb.XGBClassifier(objective="multi:softprob")
+    xgb_model.fit(x_train, y_train)
+    y_pred = xgb_model.predict(x_train)
+    display_evaluation(y_train, y_pred, filename="train")
+    # Test
+    y_pred_test = xgb_model.predict(x_test)
+    display_evaluation(y_test, y_pred_test, filename="test")
+
+
+main()
