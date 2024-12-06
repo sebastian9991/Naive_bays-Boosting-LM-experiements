@@ -5,23 +5,15 @@ from datasets import Dataset, load_dataset
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from transformers import (AutoModelForSequenceClassification, AutoTokenizer,
                           EvalPrediction, Trainer, TrainingArguments)
-
+import os
 tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")
 
 
 def get_data() -> Dataset:
     """Get data hugging face Dataset format."""
-    ds = load_dataset("google-research-datasets/go_emotions", "raw", split = "train" )
+    ds = load_dataset("google-research-datasets/go_emotions", "raw", split="train")
     # ds_test = load_dataset("google-research-datasets/go_emotions", "raw", split = "test")
-    return ds
-
-
-def get_tokenization(dataset: Dataset):
-    """
-    Split the data into appropriate formats X, y
-    preprocess text into tokenized format.
-    """
-    dataset = dataset.remove_columns(
+    ds = ds.remove_columns(
         [
             "id",
             "author",
@@ -33,15 +25,30 @@ def get_tokenization(dataset: Dataset):
             "example_very_unclear",
         ]
     )
-    dataset = remove_multi_labels(dataset)
-    labels = [label for label in dataset.features.keys() if label not in ["text", "id"]]
+    ds = ds.train_test_split(test_size=0.2)
+    return ds
+
+
+data = get_data()
+labels = [
+    label for label in data["train"].features.keys() if label not in ["text", "id"]
+]
+
+
+def get_tokenization(dataset: Dataset):
+    """
+    Split the data into appropriate formats X, y
+    preprocess text into tokenized format.
+    """
+    dataset["train"] = remove_multi_labels(dataset["train"])
+    dataset["test"] = remove_multi_labels(dataset["test"])
     encoding_dataset = dataset.map(
-        lambda row: preprocess_data(row, labels), batched=False
+        preprocess_data, batched=True, remove_columns=dataset["train"].column_names
     )
-    return encoding_dataset, labels
+    return encoding_dataset
 
 
-def preprocess_data(dataset: Dataset, labels):
+def preprocess_data(dataset: Dataset):
     """Preprocess according to tutorial: https://colab.research.google.com/github/NielsRogge/Transformers-Tutorials/blob/master/BERT/Fine_tuning_BERT_(and_friends)_for_multi_label_text_classification.ipynb#scrollTo=AFWlSsbZaRLc"""
     text = dataset["text"]
     encoding = tokenizer(text, padding="max_length", truncation=True)
@@ -84,12 +91,21 @@ def remove_multi_labels(dataset: Dataset):
 
 
 def main() -> None:
-    data = get_data()
-    data_encoded, labels = get_tokenization(data)
-    data_encoded.set_format("torch") #Create training, validation, test sets
-    print(data_encoded[0])
+    # Set environment variable for PyTorch memory allocation
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
+    # Clear GPU memory
+    torch.cuda.empty_cache()
+
+    # Reset CUDA memory
+    torch.cuda.reset_peak_memory_stats()
+
+    data_encoded = get_tokenization(data)
+    data_encoded.set_format(type = "torch", columns = ["input_ids", "attention_mask", "labels"])
     id2label = {idx: label for idx, label in enumerate(labels)}
     label2id = {label: idx for idx, label in enumerate(labels)}
+
+
+    print("Loading Model")
     model = AutoModelForSequenceClassification.from_pretrained(
         "google-bert/bert-base-uncased",
         problem_type="multi_label_classification",
@@ -97,7 +113,8 @@ def main() -> None:
         id2label=id2label,
         label2id=label2id,
     )
-    batch_size = 128
+    print("Model loaded.")
+    batch_size = 32
     training_args = TrainingArguments(
         f"bert-finetuned-sem_eval-reddit",
         evaluation_strategy="epoch",
@@ -109,19 +126,25 @@ def main() -> None:
         weight_decay=0.01,
         load_best_model_at_end=True,
         metric_for_best_model="f1",
+        fp16=True,
+        dataloader_pin_memory=True,
     )
 
+    print("Training arguments configured")
     trainer = Trainer(
         model,
-        args = training_args,
-        train_dataset = data_encoded['train'],
-        eval_dataset = data_encoded['test'],
-        tokenizer = tokenizer,
-        compute_metrics = compute_metrics
-
+        args=training_args,
+        train_dataset=data_encoded["train"],
+        eval_dataset=data_encoded["test"],
+        tokenizer=tokenizer,
+        compute_metrics=compute_metrics,
     )
 
+    print("Starting training...")
     trainer.train()
+    print("Training complete")
+
+    print(torch.cuda.memory_summary(device=torch.device("cuda")))
 
 
 if __name__ == "__main__":
