@@ -5,7 +5,7 @@ from datasets import Dataset, load_dataset
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from transformers import (AutoModelForSequenceClassification, AutoTokenizer,
                           EvalPrediction, Trainer, TrainingArguments)
-import os
+
 tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")
 
 
@@ -91,14 +91,6 @@ def remove_multi_labels(dataset: Dataset):
 
 
 def main() -> None:
-    # Set environment variable for PyTorch memory allocation
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
-    # Clear GPU memory
-    torch.cuda.empty_cache()
-
-    # Reset CUDA memory
-    torch.cuda.reset_peak_memory_stats()
-
     data_encoded = get_tokenization(data)
     data_encoded.set_format(type = "torch", columns = ["input_ids", "attention_mask", "labels"])
     id2label = {idx: label for idx, label in enumerate(labels)}
