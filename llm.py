@@ -2,10 +2,9 @@ import numpy as np
 import pandas as pd
 import torch
 from datasets import Dataset, load_dataset
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, confusion_matrix, classification_report
 from transformers import (AutoModelForSequenceClassification, AutoTokenizer,
                           EvalPrediction, Trainer, TrainingArguments)
-
 tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")
 
 
@@ -92,10 +91,11 @@ def remove_multi_labels(dataset: Dataset):
 
 def main() -> None:
     data_encoded = get_tokenization(data)
-    data_encoded.set_format(type = "torch", columns = ["input_ids", "attention_mask", "labels"])
+    data_encoded.set_format(
+        type="torch", columns=["input_ids", "attention_mask", "labels"]
+    )
     id2label = {idx: label for idx, label in enumerate(labels)}
     label2id = {label: idx for idx, label in enumerate(labels)}
-
 
     print("Loading Model")
     model = AutoModelForSequenceClassification.from_pretrained(
@@ -135,6 +135,33 @@ def main() -> None:
     print("Starting training...")
     trainer.train()
     print("Training complete")
+
+    #Evaluation
+    print("Evaluation on test set:")
+    trainer.evaluate()
+    print("Evaluation complete.")
+
+    #Display some confusion matrix
+    #Generate predictions
+    predictions_output = trainer.predict(data_encoded["test"])
+    predictions = predictions_output.predictions
+    labels_true = predictions_output.label_ids
+
+    #Apply sigmoid and threshold
+    sigmoid = torch.nn.Sigmoid()
+    probs = sigmoid(torch.Tensor(predictions))
+    y_pred = (probs >= 0.5).int().numpy()
+    y_true = labels_true
+
+    #Display Classification Report
+    print("Classification Report:")
+    print(classification_report(y_true, y_pred, target_names=labels))
+
+    # Display Confusion Matrix for each label
+    for i, label in enumerate(labels):
+        cm = confusion_matrix(y_true[:, i], y_pred[:, i])
+        print(f"Confusion Matrix for '{label}':")
+        print(cm)
 
     print(torch.cuda.memory_summary(device=torch.device("cuda")))
 
